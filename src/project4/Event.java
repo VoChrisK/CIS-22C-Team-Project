@@ -1,15 +1,14 @@
-/**
- * This class creates an event using the name, start time, and end time of the user-defined event.
- * @author Chris Vo
- * @Version 1.0
- */
-
-package calendar;
+package project4;
 
 import java.io.Serializable;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
 
+/**
+ * This class creates an event using the name, start time, and end time of the user-defined event.
+ * @author Chris Vo
+ * @Version 1.0
+ */
 @SuppressWarnings("serial")
 public class Event implements Serializable {
 	//class variable declarations
