@@ -1,41 +1,30 @@
-/*
-Name: Chris Vo
-Date: November 4, 2018
-Class: CS 134 - Kevin Smith
-This file declares a particle and sprite class/object with proposable variables and methods
-*/
+//Chris Vo
+//CS 134
+//Final Project
 
-/*
-SYNOPSIS: You are Stickman, stick figure superhero and defender of Stick Figure World. You must defend your
-beloved home planet from your evil clones in outer space. Do you have what it takes?
-*/
 #pragma once
 
 #include "ofMain.h"
-#include "Base.h"
 
-class Particle: public Base {
-	public:
-		float birth;
-		float lifespan;
-		ofVec3f forces;
-		ofVec3f acceleration;
-		float damping;
-		float mass;
-		ofImage image;
-		ofColor color;
+class ParticleForceField;
 
-		Particle();
-		double age();
-		void updatePosition(ofVec3f);
-		virtual void draw();
-		void integrate();
+class Particle {
+public:
+	Particle();
+
+	ofVec3f position;
+	ofVec3f velocity;
+	ofVec3f acceleration;
+	ofVec3f forces;
+	float	damping;
+	float   mass;
+	float   lifespan;
+	float   radius;
+	float   birthtime;
+	void    integrate();
+	void    draw();
+	float   age();        // sec
+	ofColor color;
 };
 
-class Sprite : public Particle {
-	public:
-		
-		Sprite();
-		void draw();
-		bool inside(ofVec2f);
-};
+

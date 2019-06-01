@@ -1,51 +1,24 @@
-/*
-Name: Chris Vo
-Date: October 5, 2018
-Class: CS 134 - Kevin Smith
-This class defines the ofApp class/object with proposable variables and functions.
-*/
-
-/*
-SYNOPSIS: You are Stickman, stick figure superhero and defender of Stick Figure World. You must defend your
-beloved home planet from your evil clones in outer space. Do you have what it takes?
-*/
+//Chris Vo
+//CS 134
+//Final Project
 #pragma once
 
 #include "ofMain.h"
-#include "ofxGui.h"
-#include "Particle.h"
+#include  "ofxAssimpModelLoader.h"
 #include "ParticleSystem.h"
-#include "Emitter.h"
+#include "ParticleEmitter.h"
+#include "Octree.h"
+#include "box.h"
+#include "ray.h"
+
 
 class ofApp : public ofBaseApp{
 
 	public:
-		Emitter player; //missile launcher that the user controls
-		Emitter spawn;
-		ParticleEmitter particles;
-		Sprite laser;
-		Sprite enemy; //enemy ship that only moves around
-		ofVec3f last;
-		ofVec3f move;
-		MoveDir arrow; //to record which arrow keys was pressed to update movement accordingly
-		bool start; //check if the game is in idle or playable mode
-		bool flag; //to clear the enemy spawns when the player dies. Recreate the spawns when the user plays again
-		int score;
-		int life;
-		int level;
-		ofSoundPlayer sound1;
-		ofSoundPlayer sound2;
-		Attributes playerAttributes;
-		Attributes enemyAttributes;
-		Attributes ParticleAttributes;
-		ofImage background;
-
 		void setup();
-		void restart();
-		void setAttributes();
-		void gameStart();
 		void update();
 		void draw();
+
 		void keyPressed(int key);
 		void keyReleased(int key);
 		void mouseMoved(int x, int y );
@@ -57,6 +30,40 @@ class ofApp : public ofBaseApp{
 		void windowResized(int w, int h);
 		void dragEvent(ofDragInfo dragInfo);
 		void gotMessage(ofMessage msg);
+		void drawAxis(ofVec3f);
+		void initLightingAndMaterials();
+		void savePicture();
+		void toggleWireframeMode();
+		void togglePointsDisplay();
 
+		ofEasyCam cam;
+		ofxAssimpModelLoader lander;
+		ofxAssimpModelLoader surface;
+		ofImage backgroundImage;
+		ofCamera *theCam = NULL;
+		ofCamera topCam;
+
+		bool bAltKeyDown;
+		bool bCtrlKeyDown;
+		bool bWireframe;
+		bool bDisplayPoints;
+	
+		bool bBackgroundLoaded = false;
+		bool bLanderLoaded = false;
+		Octree octree;
+		TreeNode node;
+		int numLevels = 5;
+		bool surfaceView = false;
+		bool windowView = false;
+		bool fixedView = false;
+		ImpulseForce *impulse;
+		ThrusterForce *thruster;
+		bool drawFlag = false;
+		float alt;
+		bool intersect = false;
+		ofSoundPlayer rocket;
+	
+		ParticleSystem *drift; //particle system of one particle to add drift to the model
+		ParticleEmitter exhaust;
 		ofLight light;
 };

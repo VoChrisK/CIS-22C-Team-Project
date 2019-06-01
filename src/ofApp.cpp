@@ -1,282 +1,419 @@
-/*
-Name: Chris Vo
-Date: November 4, 2018
-Class: CS 134 - Kevin Smith
-This file creates the foundation and functionalities of the game. The user controls an emitter that is able to fire (create)
-sprites using the spacebar. Enemy sprites are spawned in various locations and can be moved differently based on
-slider values. Basic collision detection is implemented so that whenever a missile encounters an enemy, the missile
-and the enemy disappears. Additionally, when the player touches an enemy, the game is over and restarted. All
-functionalities in this game is fully modifiable (e.g. spawn points can be placed anywhere in the play area). Physics
-and particle effects are also implemented to enhance gameplay. Different levels increasing difficulty is also added.
-*/
+//Chris Vo
+//CS 134
+//Final Project
 
-/*
-SYNOPSIS: You are Stickman, stick figure superhero and defender of Stick Figure World. You must defend your
-beloved home planet from your evil clones in outer space. Do you have what it takes?
-*/
+
 #include "ofApp.h"
-#include<cmath>
 
 //--------------------------------------------------------------
+// setup scene, lighting, state and load geometry
+//
 void ofApp::setup(){
-	start = false; //to prevent the user from controlling the emitter
-	player.setImage("images/loading-screen.png"); //shows a message indicating that the game is in idle mode
-	background.loadImage("images/game-background.png");
-	player.setPosition(ofVec3f(ofGetWindowWidth() / 2, ofGetWindowHeight() / 2)); //sets to center of the screen
-	arrow = Stop;
-	flag = false;
-	level = 1;
-	score = 0;
-	life = 3;
-	sound1.loadSound("sounds/oof.mp3");
-	sound2.loadSound("sounds/pew.mp3");
-	particles.groupSize = 100;
-	particles.type = Radial;
-}
 
-//this function is to reset the values of the player and enemies. After the game is over and restarted, attributes
-//for the player's and enemies' sprites are set to zero.
-void ofApp::restart() {
-	start = false; //to prevent the user from controlling the emitter
-	player.setImage("images/loading-screen.png"); //shows a message indicating that the game is in idle mode
-	player.setPosition(ofVec3f(ofGetWindowWidth() / 2, ofGetWindowHeight() / 2)); //sets to center of the screen
-	arrow = Stop;
-	playerAttributes.birth = 0;
-	playerAttributes.lifespan = 0;
-	playerAttributes.position = ofVec3f(0, 0, 0);
-	playerAttributes.velocity = ofVec3f(0, 0, 0);
-	enemyAttributes.birth = 0;
-	enemyAttributes.lifespan = 0;
-	enemyAttributes.position = ofVec3f(0, 0, 0);
-	enemyAttributes.velocity = ofVec3f(0, 0, 0);
-	score = 0;
-	life = 3;
-	level = 1;
-}
+	alt = 0;
+	impulse = new ImpulseForce();
+	thruster = new ThrusterForce();
+	bWireframe = false;
+	bDisplayPoints = false;
+	bAltKeyDown = false;
+	bCtrlKeyDown = false;
+	bLanderLoaded = false;
 
-//this function is to set all the attributes of the player and enemies' sprites in the Sprite System. 
-//This function pretty much reduce the size of code in the update function
-void ofApp::setAttributes() {
-	playerAttributes.position = (player.position - ofVec2f(0, player.image.getHeight() / 2)); //the missiles will spawn above the emitter
-	playerAttributes.birth = ofGetSystemTimeMillis();
-	playerAttributes.lifespan = 50 * 100; //tentative
-	playerAttributes.velocity = ofVec3f(0, -1200, 0);
-	ParticleAttributes.birth = ofGetSystemTimeMillis();
-	ParticleAttributes.lifespan = 2000;
-	ParticleAttributes.velocity = ofVec3f(0, 240);
+	rocket.loadSound("sounds/rocket.mp3");
+	cam.setDistance(10);
+	cam.setNearClip(.1);
+	cam.setFov(65.5);   // approx equivalent to 28mm in 35mm format
 
-	enemyAttributes.birth = ofGetSystemTimeMillis();
-	enemyAttributes.lifespan = 10 * 600; //tentative
-	enemyAttributes.position = (spawn.position + ofVec2f(0, player.image.getHeight() / 2));
-	spawn.setAttributes(enemyAttributes);
-}
+	light.setup();
+	light.enable();
+	light.setDirectional();
+	light.setAreaLight(1000, 1000);
+	light.setPosition(ofVec3f(500, 100, 500));
+	light.rotate(90, ofVec3f(1, 0, 0));
+	light.setSpotlightCutOff(1500);
+	light.setDiffuseColor(ofColor::orange);
 
-//this function switches the game from idle mode to playable mode and sets up the game 
-//This function essentially shortens the size of code in the keypressed function
-void ofApp::gameStart() {
-	player.setImage("images/stick-figure-player.png");
-	player.setChildImage("images/laser-beams.png");
-	player.lifespan = 1;
-	player.setVelocity(ofVec3f(0, 240));
-	player.setPosition(ofVec3f(ofGetWindowWidth() / 2, ofGetWindowHeight() / 2));
-	player.setRate(500);
-	spawn.setRate(1000);
-	enemyAttributes.velocity = ofVec3f(0, 240);
+	topCam.setNearClip(.1);
+	topCam.setFov(65.5);   
+	topCam.setPosition(0, 10, 0);
+	topCam.lookAt(glm::vec3(0, 0, 0));
 
-	spawn.setChildImage("images/stick-figure-enemy.png");
+	// set current camera;
+	//
+	theCam = &cam;
+	
+	ofSetVerticalSync(true);
+	ofEnableSmoothing();
+	ofEnableDepthTest();
 
-	particles.particles->addForce(new GravityForce(ofVec3f(0, -480, 0)));
-}
+	// load BG image
+	//
+	bBackgroundLoaded = backgroundImage.load("images/starfield-plain.jpg");
 
-//--------------------------------------------------------------
-void ofApp::update(){
-	if(start) setAttributes(); //to prevent spawning enemy sprites or other disasters during idle mode
-	player.setAttributes(playerAttributes);
-	player.updateSprite(laser);
-	player.sprites->update();
-	player.updatePosition(move);
+	// setup rudimentary lighting 
+	//
+	initLightingAndMaterials();
 
-	spawn.setPosition(ofVec3f(ofRandom(0, ofGetWindowWidth()), -20));
+	surface.loadModel("geo/moon-houdini.obj");
+	surface.setScaleNormalization(false);
+	surface.setRotation(0, 180, 0, 0, 1);
 
-	for (int i = 0; i < spawn.sprites->particles.size(); i++) {
-		//distance between an enemy sprite and the player
-		ofVec3f playerDistance = ofVec3f(abs(spawn.sprites->particles[i].position.x - player.position.x), abs(spawn.sprites->particles[i].position.y - player.position.y));
-		float playerContact1 = (player.image.getWidth() / 2) + (spawn.sprites->particles[i].image.getWidth() / 2);
-		float playerContact2 = (player.image.getHeight() / 2) + (spawn.sprites->particles[i].image.getHeight() / 2);
+	// load lander model
+	//
+	if (lander.loadModel("geo/lander.obj")) {
+		lander.setScaleNormalization(false);
+		lander.setScale(.5, .5, .5);
+		lander.setRotation(0, -180, 1, 0, 0);
 
-		if (playerDistance.x < playerContact1 && playerDistance.y < playerContact2) {
-			life--;
-			spawn.sprites->particles[i].lifespan = 0;
-
-			if (life < 1) {
-				spawn.sprites->forces.clear();
-				spawn.stop();
-
-				for (int j = 0; j < spawn.sprites->particles.size(); j++)
-					spawn.sprites->particles[j].lifespan = 0;
-
-				for (int j = 0; j < particles.particles->particles.size(); j++)
-					particles.particles->particles[j].lifespan = 0;
-
-				restart();
-				flag = true;
-			}
-		}
-
-		for (int j = 0; j < player.sprites->particles.size(); j++) {
-			//distance between an enemy sprite and the player's missile sprite
-			ofVec3f missileDistance = ofVec3f(abs(spawn.sprites->particles[i].position.x - player.sprites->particles[j].position.x), abs(spawn.sprites->particles[i].position.y - player.sprites->particles[j].position.y));
-			float missileContact1 = (player.sprites->particles[j].image.getWidth() / 2) + (spawn.sprites->particles[i].image.getWidth() / 2);
-			float missileContact2 = (player.sprites->particles[j].image.getHeight() / 2) + (spawn.sprites->particles[i].image.getHeight() / 2);
-			if (missileDistance.x < missileContact1 && missileDistance.y < missileContact2) {
-				particles.attributes = ParticleAttributes;
-				particles.position = spawn.sprites->particles[i].position;
-				particles.start();
-				spawn.sprites->particles[i].lifespan = 0; //set lifespan value to 0 to immediately remove it in the system
-				player.sprites->particles[j].lifespan = 0;
-				score += 100;
-
-				if (score == 4000) {
-					spawn.sprites->addForce(new RandomForce(2500));
-				}
-
-
-				if (score == 9000) {
-					spawn.sprites->addForce(new RandomForce(5000));
-				}
-
-				//every score of 5000 nets an extra life and increases player missile and spawn rate and speed by a bit
-				if (score % 1000 == 0) {
-					life++;
-					player.setRate(player.rate - 5);
-					spawn.setRate(spawn.rate - 50);
-					enemyAttributes.velocity += ofVec3f(0, 10);
-					level++;
-				}
-
-				sound1.play();
-			}
-		}
+		bLanderLoaded = true;
+	}
+	else {
+		cout << "Error: Can't load model" << "geo/lander.obj" << endl;
+		ofExit(0);
 	}
 
-	spawn.updateSprite(enemy);
-	spawn.sprites->update();
-	particles.update();
-	particles.particles->update();
+	drift = new ParticleSystem();
+	drift->addForce(new TurbulenceForce(ofVec3f(-1,0), ofVec3f(1,0)));
+	drift->addForce(thruster);
+	drift->addForce(impulse);
 
-	//if player dies, clear the spawns to prevent duplicate spawns upon restarting the game
-	if (flag) {
-		flag = false;
+	GravityForce *gravityForce = new GravityForce(ofVec3f(0, -10, 0));
+
+	exhaust.sys->addForce(gravityForce);
+
+	exhaust.setVelocity(ofVec3f(0, 1, 0));
+	exhaust.setOneShot(true);
+	exhaust.setGroupSize(50);
+	exhaust.setParticleRadius(0.02);
+	exhaust.setLifespan(1);
+	exhaust.setRate(0.02);
+	exhaust.setEmitterType(DiscEmitter);
+	Particle particle;
+	particle.lifespan = 999;
+	drift->add(particle);
+
+	octree.create(surface.getMesh(0));
+	octree.subdivide(surface.getMesh(0), octree.root, numLevels, 1);
+
+	cam.enableMouseInput();
+}
+
+void ofApp::update() {
+
+	exhaust.update();
+	drift->update();
+	if(!(drift->particles.empty()))
+		lander.setPosition(drift->particles[0].position.x + 100, drift->particles[0].position.y + 100, drift->particles[0].position.z + 100);
+
+	exhaust.setPosition(lander.getPosition());
+
+	if (surfaceView) {
+		cam.setPosition(ofVec3f(lander.getPosition().x, lander.getPosition().y, lander.getPosition().z));
+		cam.lookAt(ofVec3f(lander.getPosition().x, 0, lander.getPosition().z));
+	}
+
+	if (windowView)
+		cam.setPosition(ofVec3f(lander.getPosition().x, lander.getPosition().y + 3, lander.getPosition().z));
+
+	if (fixedView) {
+		cam.setPosition(lander.getPosition().x + 10, lander.getPosition().y, lander.getPosition().z);
+		cam.lookAt(lander.getPosition());
+	}
+
+	alt = octree.getAltitude() * (float)lander.getPosition().y;
+	intersect = octree.intersect(lander.getPosition(), octree.root, node, 1);
+
+	if (intersect) {
+		impulse->apply(-60 * drift->particles[0].velocity);
 	}
 }
 
 //--------------------------------------------------------------
-void ofApp::draw(){
-	//no need to draw the enemy spawns since they are offscreen
-	background.draw(0, 0);
-	player.draw();
-	player.sprites->draw();
+void ofApp::draw() {
 
-	spawn.sprites->draw();
-	particles.particles->draw();
+	//	ofBackgroundGradient(ofColor(20), ofColor(0));   // pick your own backgroujnd
+	//	ofBackground(ofColor::black);
+	if (bBackgroundLoaded) {
+		ofPushMatrix();
+		ofDisableDepthTest();
+		ofSetColor(50, 50, 50);
+		ofScale(2, 2);
+		backgroundImage.draw(-200, -100);
+		ofEnableDepthTest();
+		ofPopMatrix();
+	}
 
-	string str1;
-	str1 += "Score: " + std::to_string(score);
-	ofDrawBitmapString(str1, 200, 55);
+	theCam->begin();
+	ofPushMatrix();
+	if (bWireframe) {                    // wireframe mode  (include axis)
+		ofDisableLighting();
+		ofSetColor(ofColor::slateGray);
+		surface.drawWireframe();
+		if (bLanderLoaded) {
+			lander.drawWireframe();
+		}
+	}
+	else {
+		ofEnableLighting();              // shaded mode
+		surface.drawFaces();
+		if (bLanderLoaded) {
+			lander.drawFaces();
+
+		}
+	}
+
+	ofFill();
+	ofSetColor(ofColor::yellow);
+	ofDrawSphere(ofVec3f(500, 100, 500) , 50);
+	 
+	ofNoFill();
+	if(drawFlag)
+		octree.draw(octree.root, numLevels, 1);
+
+	exhaust.draw();
+	ofPopMatrix();
+	theCam->end();
+
+	// draw screen data
+	//
+	string str;
+	str += "Frame Rate: " + std::to_string(ofGetFrameRate());
+	ofSetColor(ofColor::white);
+	ofDrawBitmapString(str, ofGetWindowWidth() - 170, 75);
 
 	string str2;
-	str2 += "Life: " + std::to_string(life);
-	ofDrawBitmapString(str2, 20, 55);
-
-	string str3;
-	str3 += "Level: " + std::to_string(level);
-	ofDrawBitmapString(str3, 100, 55);
+	str2 = "Altitude: " + std::to_string(alt);
+	ofDrawBitmapString(str2, ofGetWindowWidth() - 350, 75);
 }
 
-//--------------------------------------------------------------
-void ofApp::keyPressed(int key){
-	if (key == ' ') {
-		if (!start) { //if it is still in idle mode
-			gameStart();
 
-			spawn.start();
+// Draw an XYZ axis in RGB at world (0,0,0) for reference.
+//
+void ofApp::drawAxis(ofVec3f location) {
 
-			start = true; //game's no longer in idle mode
-		}
-		else { //if it is in game mode (not in idle mode)
-			player.start();
-			sound2.play();
-		}
-	}
+	ofPushMatrix();
+	ofTranslate(location);
+
+	ofSetLineWidth(1.0);
+
+	// X Axis
+	ofSetColor(ofColor(255, 0, 0));
+	ofDrawLine(ofPoint(0, 0, 0), ofPoint(1, 0, 0));
 	
-	if (start) {
-		switch (key) { //sets the value based on the directions of the arrow keys
-			case OF_KEY_RIGHT:
-				arrow = Right;
-				break;
-			case OF_KEY_LEFT:
-				arrow = Left;
-				break;
-			case OF_KEY_UP:
-				arrow = Up;
-				break;
-			case OF_KEY_DOWN:
-				arrow = Down;
-				break;
-		};
-	}
 
-	move = player.updatePosition(arrow); //gets the value to move the player sprite in the Update function
+	// Y Axis
+	ofSetColor(ofColor(0, 255, 0));
+	ofDrawLine(ofPoint(0, 0, 0), ofPoint(0, 1, 0));
+
+	// Z Axis
+	ofSetColor(ofColor(0, 0, 255));
+	ofDrawLine(ofPoint(0, 0, 0), ofPoint(0, 0, 1));
+
+	ofPopMatrix();
 }
 
-//--------------------------------------------------------------
-void ofApp::keyReleased(int key){
-	if (start) {
-		switch (key) { //sets the value based on the directions of the arrow keys
-			case OF_KEY_RIGHT:
-			case OF_KEY_LEFT:
-			case OF_KEY_UP:
-			case OF_KEY_DOWN:
-				arrow = Stop;
-				break;
-			case ' ':
-				player.stop();
-				break;
-		};
 
-		move = player.updatePosition(arrow); //gets the value to move the player sprite in the Update function
+void ofApp::keyPressed(int key) {
+	Particle particle;
+
+	switch (key) {
+	case 'a':
+		thruster->set(ofVec3f(-1, 0, 0));
+		break;
+	case 'w':
+		thruster->set(ofVec3f(0, 0, 1));
+		break;
+	case 's':
+		thruster->set(ofVec3f(0, 0, -1));
+		break;
+	case 'd':
+		thruster->set(ofVec3f(1, 0, 0));
+		break;
+	case 'q':
+		thruster->set(ofVec3f(0, 1, 0));
+		break;
+	case 'e':
+		thruster->set(ofVec3f(0, -1, 0));
+		break;
+	case 'c':
+		if (cam.getMouseInputEnabled()) cam.disableMouseInput();
+		else cam.enableMouseInput();
+		break;
+	case 'F':
+	case 'f':
+		cam.setPosition(lander.getPosition());
+		break;
+	case 'H':
+	case 'h':
+		if (windowView)
+			windowView = false;
+		else
+			windowView = true;
+		break;
+	case 'P':
+	case 'p':
+		if (fixedView)
+			fixedView = false;
+		else
+			fixedView = true;
+		break;
+	case 'r':
+		lander.setPosition(0, 0, 0);
+		cam.reset();
+		break;
+	case 't':
+		if (drawFlag)
+			drawFlag = false;
+		else
+			drawFlag = true;
+		break;
+	case 'u':
+		if (surfaceView)
+			surfaceView = false;
+		else
+			surfaceView = true;
+		break;
+	case 'v':
+		togglePointsDisplay();
+		break;
+	case 'V':
+		toggleWireframeMode();
+		break;
+	case OF_KEY_F1:
+		theCam = &cam;
+		break;
+	case OF_KEY_F3:
+		theCam = &topCam;
+		break;
+	case OF_KEY_ALT:
+		cam.enableMouseInput();
+		bAltKeyDown = true;
+		break;
+	case OF_KEY_CONTROL:
+		bCtrlKeyDown = true;
+		break;
+	case OF_KEY_SHIFT:
+		break;
+	case OF_KEY_DEL:
+		break;
+	case OF_KEY_UP:
+		cam.move(ofVec3f(0, 1, 0));
+		break;
+	case OF_KEY_DOWN:
+		cam.move(ofVec3f(0, -1, 0));
+		break;
+	case OF_KEY_LEFT:
+		cam.move(ofVec3f(-1, 0, 0));
+		break;
+	case OF_KEY_RIGHT:
+		cam.move(ofVec3f(1, 0, 0));
+		break;
+	case ',':
+		cam.move(ofVec3f(0, 0, 1));
+		break;
+	case '/':
+		cam.move(ofVec3f(0, 0, -1));
+		break;
+	case ' ':
+		exhaust.start();
+		thruster->add(ofVec3f(0,1,0));
+		break;
+	default:
+		break;
 	}
 }
+
+void ofApp::toggleWireframeMode() {
+	bWireframe = !bWireframe;
+}
+
+
+void ofApp::togglePointsDisplay() {
+	bDisplayPoints = !bDisplayPoints;
+}
+
+void ofApp::keyReleased(int key) {
+
+	switch (key) {
+	case 'a':
+		thruster->set(ofVec3f(0, 0, 0));
+		break;
+	case 'w':
+		thruster->set(ofVec3f(0, 0, 0));
+		break;
+	case 's':
+		thruster->set(ofVec3f(0, 0, 0));
+		break;
+	case 'd':
+		thruster->set(ofVec3f(0, 0, 0));
+		break;
+	case 'q':
+		thruster->set(ofVec3f(0, 0, 0));
+		break;
+	case 'e':
+		thruster->set(ofVec3f(0, 0, 0));
+		break;
+	case ' ':
+		rocket.setLoop(true);
+		rocket.setSpeed(2);
+		rocket.play();
+		thruster->add(ofVec3f(0, 0, 0));
+		break;
+	case OF_KEY_ALT:
+		cam.disableMouseInput();
+		bAltKeyDown = false;
+		break;
+	case OF_KEY_CONTROL:
+		bCtrlKeyDown = false;
+		break;
+	case OF_KEY_SHIFT:
+		break;
+	case OF_KEY_UP:
+	case OF_KEY_DOWN:
+	case OF_KEY_LEFT:
+	case OF_KEY_RIGHT:
+		drift->newDirection = noDirection;
+		break;
+	default:
+		break;
+
+	}
+}
+
 
 //--------------------------------------------------------------
 void ofApp::mouseMoved(int x, int y ){
+}
+
+
+//--------------------------------------------------------------
+void ofApp::mousePressed(int x, int y, int button) {
+	
+	ofVec3f mouse(mouseX, mouseY);
+	ofVec3f rayPoint = cam.screenToWorld(mouse);
+	ofVec3f rayDir = rayPoint - cam.getPosition();
+	rayDir.normalize();
+	Ray ray = Ray(Vector3(rayPoint.x, rayPoint.y, rayPoint.z),
+		Vector3(rayDir.x, rayDir.y, rayDir.z));
+	TreeNode result;
+	int initial = ofGetSystemTimeMillis();
+	cout << octree.root.points.size() << endl;
+	octree.intersect(ray, octree.root, result); //tests ray intersection whenever a mouse clicked
+	cout << "2 " << octree.root.points.size() << endl;
+	
+}
+
+//--------------------------------------------------------------
+void ofApp::mouseDragged(int x, int y, int button) {
+
 
 }
 
 //--------------------------------------------------------------
-void ofApp::mouseDragged(int x, int y, int button){
-	if (start) {
-		if (player.inside(last)) { //if the mouse click is within the emitter's image area
-			ofVec3f current;
-			current.set(x, y);
-			//if the player sprite is within the play area, update the position of the sprite, else do not update.
-			if (current.x > (0 + 40) && current.x < (ofGetWindowWidth() - 40) && current.y > (0 + player.image.getHeight()) && current.y < (ofGetWindowHeight() - player.image.getHeight())) {
-				player.position += current - last;
-				last = current;
-			}
-		}
-	}
-}
-
-//--------------------------------------------------------------
-void ofApp::mousePressed(int x, int y, int button){
-	last.set(x, y);
-}
-
-//--------------------------------------------------------------
-void ofApp::mouseReleased(int x, int y, int button){
+void ofApp::mouseReleased(int x, int y, int button) {
 
 }
+
 
 //--------------------------------------------------------------
 void ofApp::mouseEntered(int x, int y){
@@ -298,7 +435,57 @@ void ofApp::gotMessage(ofMessage msg){
 
 }
 
+
+
 //--------------------------------------------------------------
-void ofApp::dragEvent(ofDragInfo dragInfo){ 
+// setup basic ambient lighting in GL  (for now, enable just 1 light)
+//
+void ofApp::initLightingAndMaterials() {
+
+	static float ambient[] =
+	{ .5f, .5f, .5, 1.0f };
+	static float diffuse[] =
+	{ .7f, .7f, .7f, 1.0f };
+
+	static float position[] =
+	{20.0, 20.0, 20.0, 0.0 };
+
+	static float lmodel_ambient[] =
+	{ 1.0f, 1.0f, 1.0f, 1.0f };
+
+	static float lmodel_twoside[] =
+	{ GL_TRUE };
+
+
+	glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
+//	glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+//	glLightfv(GL_LIGHT0, GL_POSITION, position);
+	glLightfv(GL_LIGHT1, GL_AMBIENT, ambient);
+	glLightfv(GL_LIGHT1, GL_DIFFUSE, diffuse);
+	glLightfv(GL_LIGHT1, GL_POSITION, position);
+
+
+	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, lmodel_ambient);
+//	glLightModelfv(GL_LIGHT_MODEL_TWO_SIDE, lmodel_twoside);
+
+	glEnable(GL_LIGHTING);
+	glEnable(GL_LIGHT0);
+	glEnable(GL_LIGHT1);
+	glShadeModel(GL_SMOOTH);
+} 
+
+void ofApp::savePicture() {
+	ofImage picture;
+	picture.grabScreen(0, 0, ofGetWidth(), ofGetHeight());
+	picture.save("screenshot.png");
+	cout << "picture saved" << endl;
+}
+
+//--------------------------------------------------------------
+//
+// support drag-and-drop of model (.obj) file loading.  when
+// model is dropped in viewport, place origin under cursor
+//
+void ofApp::dragEvent(ofDragInfo dragInfo) {
 
 }

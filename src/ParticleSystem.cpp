@@ -1,31 +1,24 @@
-/*
-Name: Chris Vo
-Date: November 4, 2018
-Class: CS 134 - Kevin Smith
-This file defines the functions of the ParticleSystem and SpriteSystem object/class. The SpriteSystem is a collection
-of sprites and have functions that changes the number of sprites within the collection.
-*/
 
-/*
-SYNOPSIS: You are Stickman, stick figure superhero and defender of Stick Figure World. You must defend your
-beloved home planet from your evil clones in outer space. Do you have what it takes?
-*/
+// Kevin M.Smith - CS 134 SJSU
+
 #include "ParticleSystem.h"
 
-//this function adds a sprite to the collection of sprites
-void ParticleSystem::add(Particle particle) {
-	particles.push_back(particle);
+void ParticleSystem::add(const Particle &p) {
+	particles.push_back(p);
 }
 
-//this functions draws all current sprites within the collection
-void ParticleSystem::draw() {
+void ParticleSystem::addForce(ParticleForce *f) {
+	forces.push_back(f);
+}
+
+void ParticleSystem::remove(int i) {
+	particles.erase(particles.begin() + i);
+}
+
+void ParticleSystem::setLifespan(float l) {
 	for (int i = 0; i < particles.size(); i++) {
-		particles[i].draw();
+		particles[i].lifespan = l;
 	}
-}
-
-void ParticleSystem::addForce(Force *force) {
-	forces.push_back(force);
 }
 
 void ParticleSystem::reset() {
@@ -35,13 +28,16 @@ void ParticleSystem::reset() {
 }
 
 void ParticleSystem::update() {
-
+	// check if empty and just return
 	if (particles.size() == 0) return;
 
-	//to iterate through the collection of sprites
 	vector<Particle>::iterator p = particles.begin();
 	vector<Particle>::iterator tmp;
 
+	// check which particles have exceed their lifespan and delete
+	// from list.  When deleting multiple objects from a vector while
+	// traversing at the same time, we need to use an iterator.
+	//
 	while (p != particles.end()) {
 		if (p->lifespan != -1 && p->age() > p->lifespan) {
 			tmp = particles.erase(p);
@@ -50,10 +46,14 @@ void ParticleSystem::update() {
 		else p++;
 	}
 
+	// update forces on all particles first 
+	//
 	for (int i = 0; i < particles.size(); i++) {
 		for (int k = 0; k < forces.size(); k++) {
-			if (!forces[k]->applied)
+			if (!forces[k]->applied) {
+				forces[k]->direction = newDirection;
 				forces[k]->updateForce(&particles[i]);
+			}
 		}
 	}
 
@@ -69,73 +69,90 @@ void ParticleSystem::update() {
 	//
 	for (int i = 0; i < particles.size(); i++)
 		particles[i].integrate();
+
 }
 
-//this function adds a sprite to the collection of sprites
-void SpriteSystem::add(Sprite sprite) {
-	particles.push_back(sprite);
-}
+// remove all particlies within "dist" of point (not implemented as yet)
+//
+int ParticleSystem::removeNear(const ofVec3f & point, float dist) { return 0; }
 
-void SpriteSystem::addForce(Force *force) {
-	forces.push_back(force);
-}
-
-//this functions draws all current sprites within the collection
-void SpriteSystem::draw() {
+//  draw the particle cloud
+//
+void ParticleSystem::draw() {
 	for (int i = 0; i < particles.size(); i++) {
 		particles[i].draw();
 	}
 }
 
-void SpriteSystem::reset() {
-	for (int i = 0; i < forces.size(); i++) {
-		forces[i]->applied = false;
-	}
+
+// Gravity Force Field 
+//
+GravityForce::GravityForce(const ofVec3f &g) {
+	gravity = g;
 }
 
-//this function checks which sprite have expended their lifespan. Sprites are deleted when they
-//are found. An iterator object is used to traverse through the collection of sprites
-//This segment of code is from Kevin M. Smith - CS 134 SJSU
-void SpriteSystem::update() {
-
-	if (particles.size() == 0) return;
-
-	//to iterate through the collection of sprites
-	vector<Sprite>::iterator s = particles.begin();
-	vector<Sprite>::iterator tmp;
-
-	while (s != particles.end()) {
-		if (s->lifespan != -1 && s->age() > s->lifespan) {
-			tmp = particles.erase(s);
-			s = tmp;
-		}
-		else s++;
-	}
-
-	if (!forces.empty()) {
-		for (int i = 0; i < particles.size(); i++) {
-			for (int k = 0; k < forces.size(); k++) {
-				if (!forces[k]->applied)
-					forces[k]->updateForce(&particles[i]);
-			}
-		}
-
-		// update all forces only applied once to "applied"
-		// so they are not applied again.
-		//
-		for (int i = 0; i < forces.size(); i++) {
-			if (forces[i]->applyOnce)
-				forces[i]->applied = true;
-		}
-
-		// integrate all the particles in the store
-		//
-		for (int i = 0; i < particles.size(); i++)
-			particles[i].integrate();
-	}
-
-	//move sprite
-	for (int i = 0; i < particles.size(); i++) {
-		particles[i].position += particles[i].velocity / ofGetFrameRate();
-	}
+void GravityForce::updateForce(Particle * particle) {
+	//
+	// f = mg
+	//
+	particle->forces += gravity * particle->mass;
 }
+
+// Turbulence Force Field 
+//
+TurbulenceForce::TurbulenceForce(const ofVec3f &min, const ofVec3f &max) {
+	tmin = min;
+	tmax = max;
+}
+
+void TurbulenceForce::updateForce(Particle * particle) {
+	//
+	// We are going to add a little "noise" to a particles
+	// forces to achieve a more natual look to the motion
+	//
+	particle->forces.x += ofRandom(tmin.x, tmax.x);
+	particle->forces.y += ofRandom(tmin.y, tmax.y);
+	particle->forces.z += ofRandom(tmin.z, tmax.z);
+}
+
+// Impulse Radial Force - this is a "one shot" force that
+// eminates radially outward in random directions.
+//
+ImpulseRadialForce::ImpulseRadialForce(float magnitude) {
+	this->magnitude = magnitude;
+	applyOnce = true;
+}
+
+void ImpulseRadialForce::updateForce(Particle * particle) {
+
+	// we basically create a random direction for each particle
+	// the force is only added once after it is triggered.
+	//
+	ofVec3f dir = ofVec3f(ofRandom(-1, 1), ofRandom(-height/2.0, height/2.0), ofRandom(-1, 1));
+	particle->forces += dir.getNormalized() * magnitude;
+}
+
+CyclicForce::CyclicForce(float magnitude) {
+	this->magnitude = magnitude;
+}
+
+void CyclicForce::updateForce(Particle * particle) {
+
+	ofVec3f position = particle->position;
+	ofVec3f norm = position.getNormalized();
+	ofVec3f dir = norm.cross(ofVec3f(0, 1, 0));
+	particle->forces += dir.getNormalized() * magnitude;
+}
+
+void ThrusterForce::updateForce(Particle *particle) {
+	particle->forces += thrust.getNormalized() * magnitude;
+}
+
+void ThrusterForce::add(ofVec3f v) {
+	thrust += v;
+}
+
+void ThrusterForce::set(ofVec3f v) {
+	thrust = v;
+}
+

@@ -1,74 +1,65 @@
-/*
-Name: Chris Vo
-Date: November 4, 2018
-Class: CS 134 - Kevin Smith
-This file describes the functions of the Particle and Sprite class/object. A sprite will have defined
-position, birth of creation, lifespan, and image while a particle will have those except image as well
-as mass, acceleration, and damping.
-*/
-
-/*
-SYNOPSIS: You are Stickman, stick figure superhero and defender of Stick Figure World. You must defend your
-beloved home planet from your evil clones in outer space. Do you have what it takes?
-*/
 #include "Particle.h"
 
+
 Particle::Particle() {
+
+	// initialize particle with some reasonable values first;
+	//
+	velocity.set(0, 0, 0);
 	acceleration.set(0, 0, 0);
-	damping = 1;
+	position.set(0, 0, 0);
+	forces.set(0, 0, 0);
+	lifespan = 5;
+	birthtime = 0;
+	radius = .1;
+	damping = .99;
 	mass = 1;
-	color = ofColor::red;
-}
-
-//this function calculates the age of the sprite
-double Particle::age() {
-	return (ofGetSystemTimeMillis() - birth);
-}
-
-//this function updates the position of the sprite
-void Particle::updatePosition(ofVec3f v) {
-	position += v;
+	color = ofColor::yellow;
 }
 
 void Particle::draw() {
 	ofSetColor(color);
-	ofDrawCircle(position.x, position.y, 1);
-	ofSetColor(ofColor::white);
+//	ofSetColor(ofMap(age(), 0, lifespan, 255, 10), 0, 0);
+	ofDrawSphere(position, radius);
 }
 
+// write your own integrator here.. (hint: it's only 3 lines of code)
+//
 void Particle::integrate() {
-	float dt = 1.0 / ofGetFrameRate();
 
+	// check for 0 framerate to avoid divide errors
+	//
+	float framerate = ofGetFrameRate();
+	if (framerate < 1.0) return;
+
+	// interval for this step
+	//
+	float dt = 1.0 / framerate;
+
+	// update position based on velocity
+	//
 	position += (velocity * dt);
 
-	ofVec3f accel = acceleration;
+	// update acceleration with accumulated paritcles forces
+	// remember :  (f = ma) OR (a = 1/m * f)
+	//
+	ofVec3f accel = acceleration;    // start with any acceleration already on the particle
 	accel += (forces * (1.0 / mass));
 	velocity += accel * dt;
 
+	// add a little damping for good measure
+	//
 	velocity *= damping;
 
+	// clear forces on particle (they get re-added each step)
+	//
 	forces.set(0, 0, 0);
 }
 
-//constructor: set the position to 0, set its bounds based on the size of the image, and set its birth to current time elapsed
-Sprite::Sprite() {
-	setPosition(ofVec3f(0, 0));
-	setVelocity(ofVec3f(0, 0));
-	setBounds(position.x - image.getHeight() / 2, position.x + image.getHeight() / 2, position.y - image.getWidth() / 2, position.y + image.getWidth() / 2);
-	lifespan = 0;
-	birth = ofGetSystemTimeMillis();
+//  return age in seconds
+//
+float Particle::age() {
+	return (ofGetElapsedTimeMillis() - birthtime)/1000.0;
 }
 
-//this function checks if the corresponding vector point is within the sprite
-bool Sprite::inside(ofVec2f vector) {
-	//if its inside the sizable area of the sprite
-	if (vector.x > minX && vector.x < maxX && vector.y > minY && vector.y < maxY)
-		return true;
 
-	return false;
-}
-
-//this method draws the sprite
-void Sprite::draw() {
-	image.draw(-image.getWidth() / 2.0 + position.x, -image.getHeight() / 2.0 + position.y);
-}
